@@ -1,25 +1,57 @@
 name: Deploy simple_project EC2
 
 on:
-  push:
-    branches:
-      - main
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Set up SSH
-        uses: webfactory/ssh-agent@v0.5.3
-        with:
-          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
-
-      - name: Copy setup_environment.sh to EC2
-        run: scp -o StrictHostKeyChecking=no setup_environment.sh ubuntu@ec2-18-207-196-252.compute-1.amazonaws.com:~
-
-      - name: Run setup_environment.sh on EC2
-        run: ssh -o StrictHostKeyChecking=no ubuntu@ec2-18-207-196-252.compute-1.amazonaws.com 'chmod +x ~/setup_environment.sh && ~/setup_environment.sh'
+    push:
+      branches:
+        - main
+      paths:
+        - "**"
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+  
+      steps:
+        - uses: actions/checkout@v4
+  
+        - name: Set up Node.js
+          uses: actions/setup-node@v4
+          with:
+            node-version: "20"
+  
+        - name: Make envfile
+          uses: SpicyPizza/create-envfile@v1
+          with:
+            PORT: 3000
+            LOG_LEVEL: "debug"
+            MONGODB_URL: ${{ secrets.MONGODB_URL }}
+            file_name: .env
+  
+        - name: Install dependencies
+          run: yarn install
+  
+        - name: Run tests and calculate pass percentage
+          id: test
+          run: |
+            yarn test -- --json > test-results.json || true
+            PASS=$(cat test-results.json | jq -r '.numPassedTests')
+            TOTAL=$(cat test-results.json | jq -r '.numTotalTests')
+            PASS_PERCENT=$((PASS * 100 / TOTAL))
+            echo "Passed tests: $PASS / $TOTAL"
+            echo "Pass percentage: $PASS_PERCENT%"
+            echo "::set-output name=pass_percent::$PASS_PERCENT"
+  
+        - name: Check pass percentage and stop action on failure
+          if: ${{ steps.test.outputs.pass_percent < 30 }}
+          run: |
+            echo "Pass percentage is less than 30%. Stopping the action."
+            exit 1
+  
+        - name: Build the project
+          run: yarn build
+  
+        - name: Archive Production Artifact
+          uses: actions/upload-artifact@v2
+          with:
+            name: build
+            path: build
+  
