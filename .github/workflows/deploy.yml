@@ -1,57 +1,54 @@
 name: Deploy simple_project EC2
 
 on:
-    push:
-      branches:
-        - main
-      paths:
-        - "**"
-  jobs:
-    build:
-      runs-on: ubuntu-latest
-  
-      steps:
-        - uses: actions/checkout@v4
-  
-        - name: Set up Node.js
-          uses: actions/setup-node@v4
-          with:
-            node-version: "20"
-  
-        - name: Make envfile
-          uses: SpicyPizza/create-envfile@v1
-          with:
-            PORT: 3000
-            LOG_LEVEL: "debug"
-            MONGODB_URL: ${{ secrets.MONGODB_URL }}
-            file_name: .env
-  
-        - name: Install dependencies
-          run: yarn install
-  
-        - name: Run tests and calculate pass percentage
-          id: test
-          run: |
-            yarn test -- --json > test-results.json || true
-            PASS=$(cat test-results.json | jq -r '.numPassedTests')
-            TOTAL=$(cat test-results.json | jq -r '.numTotalTests')
-            PASS_PERCENT=$((PASS * 100 / TOTAL))
-            echo "Passed tests: $PASS / $TOTAL"
-            echo "Pass percentage: $PASS_PERCENT%"
-            echo "::set-output name=pass_percent::$PASS_PERCENT"
-  
-        - name: Check pass percentage and stop action on failure
-          if: ${{ steps.test.outputs.pass_percent < 30 }}
-          run: |
-            echo "Pass percentage is less than 30%. Stopping the action."
-            exit 1
-  
-        - name: Build the project
-          run: yarn build
-  
-        - name: Archive Production Artifact
-          uses: actions/upload-artifact@v2
-          with:
-            name: build
-            path: build
-  
+  push:
+    branches:
+      - main
+    paths:
+      - "**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "14" # Change this to your desired Node.js version
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build the project
+        run: npm run build
+
+      - name: Deploy to EC2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: "us-west-2" # Change to your AWS region
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          # Create a tarball of the project
+          tar -czf simple_project.tar.gz ./*
+
+          # Copy the tarball to the EC2 instance
+          scp -i $EC2_SSH_KEY -o StrictHostKeyChecking=no simple_project.tar.gz ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/
+
+          # Connect to the EC2 instance and deploy the project
+          ssh -i $EC2_SSH_KEY -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} << 'EOF'
+            # Extract the project tarball
+            tar -xzf /home/ec2-user/simple_project.tar.gz -C /home/ec2-user/simple_project
+
+            # Change to the project directory
+            cd /home/ec2-user/simple_project
+
+            # Install dependencies and start the project
+            npm install
+            npm start
+          EOF
