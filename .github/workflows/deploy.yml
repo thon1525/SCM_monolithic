@@ -1,0 +1,25 @@
+name: Deploy simple_project EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Copy setup_environment.sh to EC2
+        run: scp -o StrictHostKeyChecking=no setup_environment.sh ubuntu@ec2-18-207-196-252.compute-1.amazonaws.com:~
+
+      - name: Run setup_environment.sh on EC2
+        run: ssh -o StrictHostKeyChecking=no ubuntu@ec2-18-207-196-252.compute-1.amazonaws.com 'chmod +x ~/setup_environment.sh && ~/setup_environment.sh'
