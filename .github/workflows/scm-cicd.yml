@@ -33,6 +33,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+
     steps:
       - name: Download build artifact
         uses: actions/download-artifact@v3
@@ -40,15 +41,17 @@ jobs:
           name: build
           path: build
 
-      - name: Add SSH Key
-        uses: webfactory/ssh-agent@v0.5.3
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_IP }} >> ~/.ssh/known_hosts
 
       - name: Ensure target directory exists
         run: |
-          ssh -o StrictHostKeyChecking=no -i ${{ secrets.SSH_PRIVATE_KEY }} ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_IP }} 'mkdir -p /home/ubuntu/app && chown -R ubuntu:ubuntu /home/ubuntu/app'
+          ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_IP }} 'mkdir -p /home/ubuntu/app && chown -R ubuntu:ubuntu /home/ubuntu/app'
 
       - name: Copy files to EC2
         run: |
-          scp -o StrictHostKeyChecking=no -i ${{ secrets.SSH_PRIVATE_KEY }} -r build/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_IP }}:/home/ubuntu/app/
+          scp -i ~/.ssh/id_rsa -r build/* ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_IP }}:/home/ubuntu/app/
