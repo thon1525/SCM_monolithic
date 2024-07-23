@@ -60,3 +60,17 @@ jobs:
           port: 22
           source: "build/*"
           target: "/home/ubuntu/app/"
+      - name: Create .env file
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_IP }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            cat <<EOF > /home/ubuntu/app/build/configs/.env.staging
+            NODE_ENV=${{ secrets.NODE_ENV }}
+            PORT=${{ secrets.PORT }}
+            LOG_LEVEL=${{ secrets.LOG_LEVEL }}
+            MONGODB_URL=${{ secrets.MONGODB_URL}}
+            EOF
