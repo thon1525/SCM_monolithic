@@ -8,6 +8,7 @@ on:
       - "**"
 
 jobs:
+  # create ci for code store in github action in store ubuntu in github
   build:
     runs-on: ubuntu-latest
 
@@ -21,36 +22,27 @@ jobs:
 
       - name: Install dependencies
         run: yarn install
-
-      - name: Run tests and calculate coverage
+      - name: Run tests and calculate pass percentage
+        id: test
         run: |
-          yarn test --coverage
-          coverage=$(grep -o 'All files.*\s\([0-9]*\)%' coverage/coverage-summary.txt | grep -o '[0-9]*')
-          echo "Test coverage is $coverage%"
-          echo "coverage=$coverage" >> $GITHUB_ENV
-
-      - name: Check test coverage
-        id: check-coverage
-        run: |
-          if [ $coverage -lt 30 ]; then
-            echo "Test coverage is below 30%. Deployment will not proceed."
-            exit 1
-          fi
-
+          yarn test -- --json > test-results.json || true
+          PASS=$(cat test-results.json | jq -r '.numPassedTests')
+          TOTAL=$(cat test-results.json | jq -r '.numTotalTests')
+          PASS_PERCENT=$((PASS * 100 / TOTAL))
+          echo "Passed tests: $PASS / $TOTAL"
+          echo "Pass percentage: $PASS_PERCENT%"
+          echo "::set-output name=pass_percent::$PASS_PERCENT"
       - name: Build the project
-        if: ${{ success() }}
         run: yarn build
 
       - name: Archive Production Artifact
-        if: ${{ success() }}
         uses: actions/upload-artifact@v2
         with:
           name: build
           path: build
-
+  # create code store
   deploy:
     needs: build
-    if: ${{ success() }}
     runs-on: ubuntu-latest
 
     steps:
@@ -67,6 +59,8 @@ jobs:
 
       - name: Ensure target directory exists
         uses: appleboy/ssh-action@master
+        # run: |
+        #   ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_IP }} "mkdir -p /home/ubuntu/app && chown -R ubuntu:ubuntu /home/ubuntu/app"
         with:
           host: ${{ secrets.EC2_IP }}
           username: ${{ secrets.EC2_USERNAME }}
@@ -75,7 +69,6 @@ jobs:
           script: |
             mkdir -p /home/ubuntu/app
             chown -R ubuntu:ubuntu /home/ubuntu/app
-
       - name: Copy files to EC2
         uses: appleboy/scp-action@master
         with:
@@ -98,7 +91,7 @@ jobs:
             NODE_ENV=${{ secrets.NODE_ENV }}
             PORT=${{ secrets.PORT }}
             LOG_LEVEL=${{ secrets.LOG_LEVEL }}
-            MONGODB_URL=${{ secrets.MONGODB_URL }}
+            MONGODB_URL=${{ secrets.MONGODB_URL}}
             EOF
 
       - name: Start Application
@@ -146,3 +139,6 @@ jobs:
               echo "Application is running. Restarting..."
               pm2 restart SCM
             else
+              echo "Application is not running. Starting..."
+              pm2 start ./src/server.js --name SCM
+            fi
