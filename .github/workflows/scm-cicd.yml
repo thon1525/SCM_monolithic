@@ -53,8 +53,6 @@ jobs:
 
       - name: Ensure target directory exists
         uses: appleboy/ssh-action@master
-        # run: |
-        #   ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_IP }} "mkdir -p /home/ubuntu/app && chown -R ubuntu:ubuntu /home/ubuntu/app"
         with:
           host: ${{ secrets.EC2_IP }}
           username: ${{ secrets.EC2_USERNAME }}
